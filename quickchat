@@ -1,0 +1,242 @@
+package quickchat;
+
+import java.util.Scanner;
+
+public class QuickChat {
+
+    private static final Scanner scanner = new Scanner(System.in);
+    private static Login currentUser = null;
+    private static final MessageManager manager = new MessageManager();
+
+    public static void main(String[] args) {
+        System.out.println("Welcome to QuickChat Registration ");
+
+        currentUser = registerNewUser();
+
+        if (currentUser == null) {
+            System.out.println("Registration failed. Exiting application.");
+            return;
+        }
+
+        System.out.println("\nRegistration complete. Please log in.");
+        boolean loggedIn = attemptLogin();
+
+        if (!loggedIn) {
+            System.out.println("Login failed. Exiting application.");
+            return;
+        }
+
+        // Initialize historical data records from file storage right upon login success
+        Message.loadStoredMessagesFromJSON();
+        runMainMenu();
+    }
+
+    private static Login registerNewUser() {
+        System.out.print("Enter your first name: ");
+        String firstName = scanner.nextLine();
+
+        System.out.print("Enter your last name: ");
+        String lastName = scanner.nextLine();
+
+        System.out.print("Enter a username (must contain _ and be 5 characters or less): ");
+        String username = scanner.nextLine();
+
+        System.out.print("Enter a password (min 8 chars, 1 capital, 1 number, 1 special character): ");
+        String password = scanner.nextLine();
+
+        System.out.print("Enter your cell phone number (with international code e.g. +27831234567): ");
+        String cell = scanner.nextLine();
+
+        Login newUser = new Login(firstName, lastName, username, password, cell);
+        String result = newUser.registerUser();
+
+        System.out.println("\n" + result);
+
+        if (result.startsWith("Registration successful")) {
+            return newUser;
+        }
+        return null;
+    }
+
+    private static boolean attemptLogin() {
+        int attempts = 0;
+        while (attempts < 3) {
+            System.out.print("\nEnter username: ");
+            String username = scanner.nextLine();
+
+            System.out.print("Enter password: ");
+            String password = scanner.nextLine();
+
+            String status = currentUser.returnLoginStatus(username, password);
+            System.out.println(status);
+
+            if (currentUser.loginUser(username, password)) {
+                return true;
+            }
+            attempts++;
+            System.out.println("Attempts remaining: " + (3 - attempts));
+        }
+        return false;
+    }
+
+    private static void runMainMenu() {
+        System.out.println("\nWelcome to QuickChat.");
+        boolean running = true;
+
+        while (running) {
+            System.out.println("\nMain Menu");
+            System.out.println("1) Send Messages");
+            System.out.println("2) Show recently sent messages");
+            System.out.println("3) Stored Messages Options");
+            System.out.println("4) Quit");
+            System.out.print("Choose an option: ");
+
+            String input = scanner.nextLine().trim();
+
+            switch (input) {
+                case "1":
+                    sendMessagesMenu();
+                    break;
+                case "2":
+                    // Linked directly to print recent items stored inside Message class memory space
+                    System.out.println(Message.printMessages());
+                    break;
+                case "3":
+                    storedMessagesMenu();
+                    break;
+                case "4":
+                    System.out.println("Thank you for using QuickChat. Goodbye!");
+                    running = false;
+                    break;
+                default:
+                    System.out.println("Invalid option. Please choose 1, 2, 3, or 4.");
+            }
+        }
+    }
+
+    private static void sendMessagesMenu() {
+        System.out.print("\nHow many messages do you want to send? ");
+        int numMessages = 0;
+        try {
+            numMessages = Integer.parseInt(scanner.nextLine().trim());
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid number entered.");
+            return;
+        }
+
+        if (numMessages <= 0) {
+            System.out.println("Please enter a valid number greater than 0.");
+            return;
+        }
+
+        for (int i = 1; i <= numMessages; i++) {
+            System.out.println("\nMessage " + i + " of " + numMessages + "  ");
+
+            System.out.print("Enter recipient cell number (with international code e.g. +27831234567): ");
+            String recipient = scanner.nextLine();
+
+            System.out.print("Enter your message (max 250 characters): ");
+            String text = scanner.nextLine();
+
+            Message msg = new Message(i, recipient, text);
+
+            String lengthCheck = msg.checkMessageLength(text);
+            System.out.println(lengthCheck);
+
+            if (!lengthCheck.equals("Message ready to send.")) {
+                System.out.println("Message discarded due to length.");
+                continue;
+            }
+
+            String cellCheck = msg.checkRecipientCell();
+            System.out.println(cellCheck);
+
+            if (!cellCheck.equals("Cell phone number successfully captured.")) {
+                System.out.println("Message discarded due to invalid recipient number.");
+                continue;
+            }
+
+            System.out.println("Message ID: " + msg.getMessageID());
+            System.out.println("Message Hash: " + msg.getMessageHash());
+
+            System.out.println("\nWhat would you like to do with this message?");
+            System.out.println("1) Send Message");
+            System.out.println("2) Disregard Message");
+            System.out.println("3) Store Message to send later");
+            System.out.print("Choose an option: ");
+
+            int choice = 2; // Defaults to safe option (Disregard) if format parser trips up
+            try {
+                choice = Integer.parseInt(scanner.nextLine().trim());
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid choice. Message automatically flagged as disregarded.");
+            }
+
+            String result = msg.sentMessage(choice);
+            System.out.println(result);
+
+            if (choice == 1) {
+                System.out.println("\nMessage Summary Details:");
+                System.out.println("Message ID: " + msg.getMessageID());
+                System.out.println("Message Hash: " + msg.getMessageHash());
+                System.out.println("Recipient: " + msg.getRecipient());
+                System.out.println("Message: " + msg.getMessageText());
+            }
+        }
+
+        System.out.println("\nTotal messages sent this session: " + Message.returnTotalMessages());
+    }
+
+    private static void storedMessagesMenu() {
+        boolean back = false;
+        while (!back) {
+            System.out.println("\nStored Messages Menu");
+            System.out.println("1) Display all stored message sender and recipient details");
+            System.out.println("2) Display the longest stored message");
+            System.out.println("3) Search for a message by ID");
+            System.out.println("4) Search messages by recipient");
+            System.out.println("5) Delete a message by message hash");
+            System.out.println("6) Display full message report");
+            System.out.println("7) Back to main menu");
+            System.out.print("Choose an option: ");
+
+            String choice = scanner.nextLine().trim();
+
+            switch (choice) {
+                case "1":
+                    System.out.println(manager.displayAllStoredMessageDetails());
+                    break;
+                case "2":
+                    System.out.println("Longest message: " + manager.displayLongestMessage());
+                    break;
+                case "3":
+                    System.out.print("Enter message ID to search: ");
+                    String searchID = scanner.nextLine().trim();
+                    System.out.println(manager.searchByMessageID(searchID));
+                    break;
+                case "4":
+                    System.out.print("Enter recipient number to search: ");
+                    String recipient = scanner.nextLine().trim();
+                    System.out.println(manager.searchByRecipient(recipient));
+                    break;
+                case "5":
+                    System.out.print("Enter message hash to delete: ");
+                    String hash = scanner.nextLine().trim();
+                    System.out.println(manager.deleteMessageByHash(hash));
+                    break;
+                case "6":
+                    System.out.println(manager.displayReport());
+                    break;
+                case "7":
+                    back = true;
+                    break;
+                default:
+                    System.out.println("Invalid option. Please try again.");
+            }
+        }
+    }
+
+    public static Login getCurrentUser() {
+        return currentUser;
+    }
+}
